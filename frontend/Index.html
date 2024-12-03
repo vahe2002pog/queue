@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>Online Queue</title>
+<style>
+body { font-family: sans-serif; }
+.container { width: 80%; margin: 0 auto; }
+</style>
+</head>
+<body>
+<div class="container">
+  <h1>Online Queue</h1>
+
+  <div id="auth-status"></div>
+  <button id="login-button">Login with VK</button>
+
+  <div id="queue-container" style="display: none;">
+    <h2>Queue</h2>
+    <ul id="queue-list"></ul>
+    <button id="add-to-queue-button" disabled>Add to Queue</button>
+    <button id="remove-from-queue-button" disabled>Remove from Queue</button>
+    <p>Queue Length: <span id="queue-length">0</span></p>
+  </div>
+
+  <div id="loading-indicator" style="display: none;">Loading...</div>
+  <div id="error-message" style="color: red;"></div>
+</div>
+
+<script type="module" src="script.js"></script>
+</body>
+</html>
