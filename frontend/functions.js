@@ -1,12 +1,15 @@
-const russianMonths = ["Января", "Февраля", "Марта", "Апреля", "Мая", "Июня",
-    "Июля", "Августа", "Сентября", "Октября", "Ноября", "Декабря"];
+// Enhanced JavaScript Frontend Functions for Queue Management
+
+const russianMonths = ["Января", "Февраля", "Марта", "Апреля", "Мая", "Июня", "Июля", "Августа", "Сентября", "Октября", "Ноября", "Декабря"];
 
 let isAuth = false;
 let user = null;
-let queue = [];
-let myQueueId = null;
+let queues = [];
+let activeQueueId = null;
+let myQueueEntryId = null;
 let loading = false;
 let error = null;
+const eventSource = new EventSource('/api/queue/updates'); // Real-time updates with Server-Sent Events
 
 function getCookie(key) {
     const cookies = document.cookie.split('; ');
@@ -30,80 +33,130 @@ async function request(url, method = 'GET', body = null, accept = 'application/j
     try {
         const response = await fetch(url, options);
         if (!response.ok) {
-            const errorData = await response.json().catch(() => ({ error: 'Ошибка сети' }));
-            throw new Error(`HTTP error! status: ${response.status}, ${JSON.stringify(errorData)}`);
+            throw new Error(`Error ${response.status}: ${response.statusText}`);
         }
         return await response.json();
     } catch (err) {
         error = err.message;
-        console.error('Request error:', err);
+        console.error(err);
     } finally {
         loading = false;
     }
 }
 
-export async function addToQueue() {
-    try {
-        const { queue_id } = await request('/api/queue', 'POST', { user_id: user.id });
-        myQueueId = queue_id;
-        await getQueueData();
-    } catch (e) {
-        console.error("Ошибка добавления в очередь", e);
+async function fetchQueues() {
+    const data = await request('/api/queues');
+    if (data) {
+        queues = data.data || [];
+        renderQueues();
     }
 }
 
-export async function getQueueData() {
-    try {
-        queue = (await request('/api/queue')).data; // Assuming your API returns data in a 'data' field
-    } catch (e) {
-        console.error("Ошибка получения очереди", e);
+async function createQueue(queueName) {
+    const data = await request('/api/queues', 'POST', { name: queueName });
+    if (data && data.data) {
+        activeQueueId = data.data.queue_id;
+        await fetchQueues();
     }
 }
 
-export async function removeFromQueue() {
-    try {
-        if (!myQueueId) return;
-        await request(`/api/queue/${myQueueId}`, 'DELETE');
-        myQueueId = null;
-        await getQueueData();
-    } catch (e) {
-        console.error("Ошибка удаления из очереди", e);
+async function joinQueue(queueId) {
+    const data = await request(`/api/queues/${queueId}/join`, 'POST');
+    if (data && data.data) {
+        myQueueEntryId = data.data.entry_id;
+        activeQueueId = queueId;
+        await fetchQueues();
     }
 }
 
-export async function checkAuth() {
-    try {
-        const { auth, data } = await request('/api/authcheck'); // Assuming your API returns user data in a 'data' field
-        isAuth = auth;
-        if (auth) {
-            user = data; // Assuming your API returns user data in a 'data' field
+async function leaveQueue() {
+    if (!myQueueEntryId) return;
+    const data = await request(`/api/queues/${activeQueueId}/leave`, 'DELETE');
+    if (data && data.data) {
+        myQueueEntryId = null;
+        activeQueueId = null;
+        await fetchQueues();
+    }
+}
+
+async function skipTurn() {
+    if (!myQueueEntryId) return;
+    const data = await request(`/api/queues/${activeQueueId}/skip`, 'POST');
+    if (data && data.data) {
+        await fetchQueues();
+    }
+}
+
+async function requestSwap(targetEntryId) {
+    const data = await request(`/api/queues/${activeQueueId}/swap`, 'POST', { target_entry_id: targetEntryId });
+    if (data && data.data) {
+        await fetchQueues();
+    }
+}
+
+function handleRealTimeUpdates(event) {
+    const update = JSON.parse(event.data);
+    if (update.queueId === activeQueueId) {
+        fetchQueues();
+    }
+}
+
+eventSource.addEventListener('message', handleRealTimeUpdates);
+
+function renderQueues() {
+    const queuesContainer = document.getElementById('queues');
+    queuesContainer.innerHTML = '';
+    queues.forEach(queue => {
+        const queueItem = document.createElement('div');
+        queueItem.className = 'queue-item';
+        queueItem.textContent = `Queue: ${queue.name} (${queue.members.length} members)`;
+        queueItem.addEventListener('click', () => joinQueue(queue.id));
+        queuesContainer.appendChild(queueItem);
+    });
+}
+
+function renderQueueDetails(queue) {
+    const queueContainer = document.getElementById('queueDetails');
+    queueContainer.innerHTML = '';
+    queue.members.forEach((member, index) => {
+        const date = new Date(member.timestamp);
+        const formattedDate = `${date.getDate()} ${russianMonths[date.getMonth()]} ${date.getFullYear()} ${date.getHours()}:${date.getMinutes()}`;
+        const memberItem = document.createElement('div');
+        memberItem.className = 'member-item';
+        memberItem.textContent = `#${index + 1} User: ${member.user_id}, Time: ${formattedDate}`;
+
+        if (member.user_id === user.id) {
+            const skipButton = document.createElement('button');
+            skipButton.textContent = 'Skip';
+            skipButton.addEventListener('click', skipTurn);
+
+            const leaveButton = document.createElement('button');
+            leaveButton.textContent = 'Leave';
+            leaveButton.addEventListener('click', leaveQueue);
+
+            memberItem.appendChild(skipButton);
+            memberItem.appendChild(leaveButton);
+        } else {
+            const swapButton = document.createElement('button');
+            swapButton.textContent = 'Request Swap';
+            swapButton.addEventListener('click', () => requestSwap(member.entry_id));
+            memberItem.appendChild(swapButton);
         }
-    } catch (e) {
-        console.error("Ошибка проверки авторизации", e);
-    }
+
+        queueContainer.appendChild(memberItem);
+    });
 }
 
-export async function getUser() {
-  try {
-    const { data } = await request('/api/user'); // Adjust path if needed
-    user = data;
-  } catch (e) {
-    console.error("Ошибка получения данных пользователя", e);
-  }
+function setupEventListeners() {
+    document.getElementById('createQueue').addEventListener('click', async () => {
+        const queueName = prompt('Enter queue name:');
+        if (queueName) {
+            await createQueue(queueName);
+        }
+    });
 }
 
-export function isInQueue() {
-    return user && queue.some(item => item.user_id === user.id);
-}
-
-export function getQueueLength() {
-    return queue.length;
-}
-
-
-export function getFormattedQueue() {
-    return queue.map(item => ({
-        ...item,
-        timestamp: new Date(item.timestamp).toLocaleString()
-    }));
-}
+document.addEventListener('DOMContentLoaded', async () => {
+    await fetchQueues();
+    setupEventListeners();
+});

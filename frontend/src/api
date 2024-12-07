@@ -1,0 +1,32 @@
+import axios from 'axios';
+
+const apiClient = axios.create({
+  baseURL: 'http://localhost:5000/api',
+  headers: {
+    'Content-Type': 'application/json',
+  },
+});
+
+export default {
+  createQueue(name) {
+    return apiClient.post('/queues', { name });
+  },
+  getQueues() {
+    return apiClient.get('/queues');
+  },
+  joinQueue(queueId, userId) {
+    return apiClient.post(`/queues/${queueId}/join`, { user_id: userId });
+  },
+  leaveQueue(queueId, userId) {
+    return apiClient.delete(`/queues/${queueId}/leave`, { data: { user_id: userId } });
+  },
+  skipTurn(queueId, userId) {
+    return apiClient.post(`/queues/${queueId}/skip`, { user_id: userId });
+  },
+  swapTurns(queueId, userId, targetEntryId) {
+    return apiClient.post(`/queues/${queueId}/swap`, { user_id: userId, target_entry_id: targetEntryId });
+  },
+  getQueueUpdates() {
+    return new EventSource('http://localhost:5000/api/queue/updates');
+  },
+};

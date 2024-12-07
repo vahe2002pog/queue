@@ -1,2 +1,4 @@
 /.vscode
 /backend/config.py
+/backend/__pycache__
+/frontend/package-lock.json
